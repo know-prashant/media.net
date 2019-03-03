@@ -1,0 +1,231 @@
+<!DOCTYPE HTML>
+<html>
+   <head>   
+      <meta name="viewport" content="width=device-width, initial-scale=1"> 
+      <!-- Latest compiled and minified CSS -->
+      <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
+
+      <!-- Font Awesome -->
+      <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.7.2/css/all.css" integrity="sha384-fnmOCqbTlWIlj8LyTjo7mOUStjsKC4pOpQbqyi7RrhN7udi9RwhKkMHpvLbHG9Sr" crossorigin="anonymous">
+      <!-- Babel -->
+      <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+      <!-- jQuery library -->
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+      <!-- Moment js -->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.24.0/moment.min.js"></script>    
+      <style>
+       table{
+        box-shadow: 0px 2px 3px #353535;
+        margin: 10px 0;
+       }
+
+       tbody tr{
+            -webkit-transition: background .25s ease;
+            -moz-transition: background .25s ease;
+            -o-transition: background .25s ease;
+            transition: background .25s ease;
+       }
+
+       .high{
+           background: #8BC34A;
+       }
+
+       .low{
+           background: #D32F2F;
+       }
+
+       .new{
+           background: #fff;
+       }     
+
+       i.fas{
+           vertical-align: middle;
+       }
+      </style>
+   </head>
+   
+   <body>
+      <div class="container">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Price</th>
+                    <th>LastUpdate</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <div id="sse" class="text-center">
+            <a href="javascript:WebSocketTest()">Run WebSocket</a>
+         </div>
+      </div>
+
+      <script type = "text/babel">
+        //Reset the data 
+        localStorage.removeItem("prashant");
+
+        function WebSocketTest() {
+           // Hide the button once function is initialized
+           $("#sse").hide();
+
+           if ("WebSocket" in window) {
+              console.log("WebSocket is supported by your Browser!");
+              
+              // Let us open a web socket
+              var ws = new WebSocket("ws://stocks.mnet.website");
+               
+              ws.onopen = function() {          
+                 // Web Socket is connected, send data using send()
+                 //ws.send("Message to send");
+                 console.log("Message is sent...");
+              };
+               
+              ws.onmessage = function (evt) { 
+                var received_msg = evt.data;
+
+                //Process and Render the data  
+                processReceivedData(received_msg);
+              };
+               
+              ws.onclose = function() { 
+                 
+                 // websocket is closed.
+                 alert("Connection is closed..."); 
+              };
+           } else {
+             
+              // The browser doesn't support WebSocket
+              alert("WebSocket NOT supported by your Browser!");
+           }
+        }
+
+        
+     </script>
+     <script type="text/babel">
+        
+        //Process data before rendering the view
+        let processReceivedData = data => {
+            data = JSON.parse(data);
+            let previousData = localStorage.getItem("prashant");    
+           
+            //Intial data
+            if(!previousData){
+                //Get filtered data
+                let {newData} = helper(data);        
+                
+                //Store the data
+                localStorage.setItem("prashant", JSON.stringify(newData));
+
+                //Render the view
+                updateView(newData);
+            }else{          
+                previousData = JSON.parse(previousData);
+
+                //Get filtered data
+                let { common } = helper(data); 
+
+                //Mark the values with difference in previous value
+                previousData.forEach(e => {
+                    if(common.has(e[0])){
+                        let item = common.get(e[0]);
+                        
+                        //Mark the value with difference
+                        if(item[1] > e[1]){
+                            e[2] = "high";
+                        }else{
+                            e[2] = "low";
+                        }
+
+                        //update the value
+                        e[1] = item[1];
+                        e[3] = new Date();
+
+                        //Remove the marked data
+                        common.delete(e[0]);
+                    }
+                });
+
+                //Mark the data as new data
+                for(let key of common.keys()){
+                    let item = common.get(key);
+                    previousData.push(item);
+                };            
+
+                //Update the previous data
+                localStorage.setItem("prashant", JSON.stringify(previousData));  
+
+                //Render the view
+                updateView(previousData);            
+            }
+        }
+
+        //Generate view
+        let updateView = data => {
+            //console.log(data);
+            data.forEach(element => {
+                let present = $(`#${element[0]}`);
+                let duration = timeFormatted(element[3]);
+
+                //If data is already present then only update the value
+                if(present.length){
+                    present.html(`<td>${icon(element[2])} ${element[0]}</td><td>${element[1]}</td><td>${duration}</td>`);
+                    present.removeClass().addClass(element[2]);
+                }else{
+                    //Else add the new element
+                    $(".table > tbody").append(`<tr class="${element[2]}" id="${element[0]}"><td>${icon(element[2])} ${element[0]}</td><td>${element[1]}</td><td>${duration}</td></tr>`);              
+                }            
+            });           
+        }
+
+        //Helper
+        let helper = data => {
+            //Keep track of the new and existing data
+            let common = new Map();
+
+            //Get all the unique items from new data
+            //If there are duplicate data then include the later one
+            data.forEach(e => {
+                if(common.has(e[0])){
+                    common.delete(e[0]);
+                    common.set(e[0], e);
+                }else{
+                    common.set(e[0], e);
+                }
+            });
+
+            let newData = [];
+
+            //Mark the data as new data
+            for(let key of common.keys()){
+                let item = common.get(key);
+                item.push("new");
+                item.push(new Date());
+                newData.push(item);
+            }; 
+
+            return {
+                common,
+                newData
+            };       
+        }
+
+        //Format time
+        let timeFormatted = (end) => {
+            let now = moment(new Date());
+            let last = moment(end);
+            let duration = moment.duration(last.diff(now)).humanize();
+            return duration;
+        }
+
+        //Icon
+        let icon = (current) => {
+            return current === 'high' ? `<i class="fas fa-angle-up"></i>` : current === 'low' ? `<i class="fas fa-angle-down"></i>` : `<i class="fas fa-angle-up"></i>`;
+        }
+     </script>
+   </body>
+
+</html>
